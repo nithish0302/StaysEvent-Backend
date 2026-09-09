@@ -33,6 +33,11 @@ const HotelSchema = new mongoose.Schema(
         required: [true, "Address is needed"],
         trim: true,
       },
+      pinCode: {
+        type: String,
+        required: [true, "Pincode is needed"],
+        trim: true,
+      },
       coordinates: {
         longitude: { type: Number },
         latitude: { type: Number },
@@ -50,7 +55,7 @@ const HotelSchema = new mongoose.Schema(
     },
     starRating: {
       type: Number,
-      default: null,
+      default: 1,
       validate: {
         validator: function (value) {
           return value === null || (value >= 1 && value <= 5);
@@ -58,19 +63,13 @@ const HotelSchema = new mongoose.Schema(
         message: "Star rating must be between 1 and 5",
       },
     },
+    // No enum restriction here — the vendor form offers more preset options
+    // than this list (TV, Laundry, Security, etc.) plus free-text custom
+    // amenities, so an enum here caused hotel creation to fail with a 500
+    // whenever a vendor picked anything outside the old fixed list.
     amenities: {
       type: [String],
       default: [],
-      enum: [
-        "WiFi",
-        "Pool",
-        "Gym",
-        "Parking",
-        "Restaurant",
-        "AC",
-        "Spa",
-        "Bar",
-      ],
     },
     pricePerNight: {
       type: Number,

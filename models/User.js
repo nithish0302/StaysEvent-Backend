@@ -48,7 +48,7 @@ const UserSchema = new mongoose.Schema(
     },
     vendorStatus: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
+      enum: ["pending", "approved", "rejected", "suspended"],
       default: null,
     },
     vendorBio: {

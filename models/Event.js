@@ -39,7 +39,7 @@ const EventSchema = new mongoose.Schema(
 
     bookingType: {
       type: String,
-      enum: ["hall", "ticket", "both"],
+      enum: ["hall", "ticket"],
       required: [true, "Booking Type is needed"],
     },
 
@@ -47,6 +47,11 @@ const EventSchema = new mongoose.Schema(
       pricePerDay: { type: Number, default: null },
       totalHalls: { type: Number, default: null },
       availableHalls: { type: Number, default: null },
+    },
+    hallEventId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Event",
+      default: null,
     },
 
     ticketDetails: {
@@ -122,18 +127,12 @@ const EventSchema = new mongoose.Schema(
       default: "upcoming",
     },
 
+    // No enum restriction — matches the Hotel model fix. Keeping this open
+    // avoids the same class of 500 error if the vendor form's amenity list
+    // ever grows without this schema being updated in lockstep.
     amenities: {
       type: [String],
       default: [],
-      enum: [
-        "Parking",
-        "Catering",
-        "AC",
-        "WiFi",
-        "Stage",
-        "Sound System",
-        "Photography",
-      ],
     },
 
     isPublic: { type: Boolean, default: true },

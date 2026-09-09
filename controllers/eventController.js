@@ -110,15 +110,6 @@ const createEvent = async (req, res) => {
       }
     }
 
-    if (bookingType.toLowerCase() === "both") {
-      if (!validateHallBooking() || !validateTicketBooking()) {
-        return res.status(400).json({
-          success: false,
-          message: "Both hall and ticket details needed",
-        });
-      }
-    }
-
     if (
       registrationDeadline &&
       new Date(registrationDeadline) >= new Date(startDate)
@@ -238,9 +229,17 @@ const getAllEvents = async (req, res) => {
     }
 
     if (status) {
-      filter.status = status;
+      const statusArray = Array.isArray(status)
+        ? status
+        : String(status).split(",");
+
+      filter.status = {
+        $in: statusArray.map((s) => s.toLowerCase()),
+      };
     } else {
-      filter.status = { $nin: ["completed", "cancelled"] };
+      filter.status = {
+        $nin: ["completed", "cancelled"],
+      };
     }
     if (minPrice || maxPrice) {
       const priceFilter = {};
@@ -269,7 +268,7 @@ const getAllEvents = async (req, res) => {
     const skip = (Number(page) - 1) * Number(limit);
 
     const events = await Event.find(filter).skip(skip).limit(Number(limit));
-    console.log(events);
+
     const totalEvents = await Event.countDocuments(filter);
 
     return res.status(200).json({
@@ -364,9 +363,8 @@ const updateEvent = async (req, res) => {
     const bookingTypeChanged =
       req.body.bookingType && req.body.bookingType !== event.bookingType;
 
-    const needsHall = newBookingType === "hall" || newBookingType === "both";
-    const needsTicket =
-      newBookingType === "ticket" || newBookingType === "both";
+    const needsHall = newBookingType === "hall";
+    const needsTicket = newBookingType === "ticket";
 
     if (needsHall) {
       const hallData = req.body.hallDetails || event.hallDetails;

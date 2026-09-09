@@ -16,6 +16,7 @@ const createHotel = async (req, res) => {
       pricePerNight,
       totalRooms,
       isFeatured,
+      starRating,
     } = req.body;
 
     if (user.vendorStatus !== "approved")
@@ -76,6 +77,7 @@ const createHotel = async (req, res) => {
       totalRooms,
       availableRooms: totalRooms,
       isFeatured,
+      starRating,
     });
     return res.status(201).json({ success: true, hotel });
   } catch (err) {
@@ -96,13 +98,16 @@ const getAllHotels = async (req, res) => {
       amenities,
       starRating,
       page = 1,
-      limit = 10,
+      limit = 6,
     } = req.query;
 
     let filter = { isActive: true };
 
     if (city) {
-      filter["location.city"] = city;
+      filter["location.city"] = {
+        $regex: `^${city}`,
+        $options: "i",
+      };
     }
     if (minPrice || maxPrice) {
       filter.pricePerNight = {};
@@ -201,6 +206,7 @@ const updateHotel = async (req, res) => {
       "pricePerNight",
       "totalRooms",
       "starRating",
+      "photos",
     ];
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) {
