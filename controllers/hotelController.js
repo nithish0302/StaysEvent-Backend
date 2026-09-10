@@ -101,7 +101,11 @@ const getAllHotels = async (req, res) => {
       limit = 6,
     } = req.query;
 
-    let filter = { isActive: true };
+    // Only show hotels that currently have rooms free. A fully booked hotel
+    // (availableRooms 0) drops out of the public listing automatically and
+    // reappears the moment a cancellation or checkout frees a room again —
+    // availableRooms is already kept in sync by the booking/cancel flow.
+    let filter = { isActive: true, availableRooms: { $gt: 0 } };
 
     if (city) {
       filter["location.city"] = {

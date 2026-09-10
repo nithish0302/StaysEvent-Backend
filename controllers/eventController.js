@@ -64,7 +64,12 @@ const createEvent = async (req, res) => {
         return false;
       }
 
-      const locationStrings = [location.city, location.state, location.address];
+      const locationStrings = [
+        location.city,
+        location.state,
+        location.address,
+        location.pinCode,
+      ];
 
       const hasEmptyLocationStrings = locationStrings.some(
         (field) => !field?.trim(),
@@ -263,6 +268,23 @@ const getAllEvents = async (req, res) => {
 
     if (isPublic !== undefined) {
       filter.isPublic = isPublic === "true";
+    }
+
+    // Only show events that still have capacity — a sold-out hall or fully
+    // booked ticket allotment drops out of the public listing, and reappears
+    // automatically once a cancellation frees up a seat/hall (the booking
+    // and cancel flows already keep availableHalls/availableSeats in sync).
+    const availabilityOr = [
+      { bookingType: "hall", "hallDetails.availableHalls": { $gt: 0 } },
+      { bookingType: "ticket", "ticketDetails.availableSeats": { $gt: 0 } },
+    ];
+    if (filter.$or) {
+      // The price filter above may already use a top-level $or — combine
+      // both conditions with $and instead of letting one overwrite the other.
+      filter.$and = [{ $or: filter.$or }, { $or: availabilityOr }];
+      delete filter.$or;
+    } else {
+      filter.$or = availabilityOr;
     }
 
     const skip = (Number(page) - 1) * Number(limit);

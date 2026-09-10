@@ -154,4 +154,60 @@ const getAdminStats = async (req, res) => {
   }
 };
 
-module.exports = { getVendors, updateVendorStatus, getAllUsers, getAdminStats };
+// PATCH /api/admin/listings/:itemType/:id/feature  { itemType: "hotel"|"event" }
+const toggleFeatured = async (req, res) => {
+  const { itemType, id } = req.params;
+  const Model = itemType === "hotel" ? Hotel : itemType === "event" ? Event : null;
+  if (!Model) {
+    return res.status(400).json({ success: false, message: "itemType must be hotel or event" });
+  }
+  try {
+    const item = await Model.findById(id);
+    if (!item) return res.status(404).json({ success: false, message: "Listing not found" });
+    item.isFeatured = !item.isFeatured;
+    await item.save();
+    return res.status(200).json({ success: true, isFeatured: item.isFeatured, item });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Internal Error Occurred", err: err.message });
+  }
+};
+
+// GET /api/admin/bookings?status=&category=&page=1&limit=10
+const getAllBookings = async (req, res) => {
+  try {
+    const { status, category, page = 1, limit = 10 } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (category) filter.bookingCategory = category;
+    const skip = (Number(page) - 1) * Number(limit);
+    const [bookings, total] = await Promise.all([
+      Booking.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .populate("customerId", "name email")
+        .populate("vendorId", "name email vendorDetails.businessName")
+        .populate("hotelId", "name")
+        .populate("eventId", "name"),
+      Booking.countDocuments(filter),
+    ]);
+    return res.status(200).json({
+      success: true,
+      bookings,
+      total,
+      totalPages: Math.ceil(total / Number(limit)),
+      currentPage: Number(page),
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Internal Error Occurred", err: err.message });
+  }
+};
+
+module.exports = {
+  getVendors,
+  updateVendorStatus,
+  getAllUsers,
+  getAdminStats,
+  toggleFeatured,
+  getAllBookings,
+};

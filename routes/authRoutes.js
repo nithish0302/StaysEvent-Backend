@@ -10,6 +10,8 @@ const {
   googleCallback,
   updateRole,
   updateVendorDetails,
+  updateProfile,
+  changePassword,
 } = require("../controllers/authController");
 const authMiddleware = require("../middleware/authMiddleware");
 const { validate } = require("../middleware/validate");
@@ -43,4 +45,6 @@ router.get(
 
 router.put("/update-role", authMiddleware, updateRole);
 router.put("/update-vendor-details", authMiddleware, updateVendorDetails);
+router.put("/profile", authMiddleware, updateProfile);
+router.put("/change-password", authMiddleware, changePassword);
 module.exports = router;

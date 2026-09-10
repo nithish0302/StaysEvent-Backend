@@ -48,11 +48,6 @@ const EventSchema = new mongoose.Schema(
       totalHalls: { type: Number, default: null },
       availableHalls: { type: Number, default: null },
     },
-    hallEventId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Event",
-      default: null,
-    },
 
     ticketDetails: {
       price: { type: Number, default: null },
@@ -76,6 +71,12 @@ const EventSchema = new mongoose.Schema(
       address: {
         type: String,
         required: [true, "Address is needed"],
+        trim: true,
+      },
+
+      pinCode: {
+        type: String,
+        required: [true, "Pincode is needed"],
         trim: true,
       },
 
@@ -127,9 +128,10 @@ const EventSchema = new mongoose.Schema(
       default: "upcoming",
     },
 
-    // No enum restriction — matches the Hotel model fix. Keeping this open
-    // avoids the same class of 500 error if the vendor form's amenity list
-    // ever grows without this schema being updated in lockstep.
+    // No enum restriction — same reasoning as Hotel.amenities: the vendor
+    // form offers presets plus free-text custom amenities, so a fixed enum
+    // here would cause event creation to 500 whenever a vendor picked
+    // anything outside this list.
     amenities: {
       type: [String],
       default: [],
@@ -168,5 +170,11 @@ const EventSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
+EventSchema.index({ "location.city": 1 });
+EventSchema.index({ vendorId: 1 });
+EventSchema.index({ startDate: 1 });
+EventSchema.index({ isActive: 1, isFeatured: 1 });
+EventSchema.index({ name: "text", description: "text" });
 
 module.exports = mongoose.model("Event", EventSchema);

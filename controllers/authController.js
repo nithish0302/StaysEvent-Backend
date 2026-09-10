@@ -2,6 +2,19 @@ const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
+// Refresh-token cookie options. In production the frontend and backend are
+// almost always on different origins (e.g. a Vercel frontend + a Render
+// backend), so the cookie needs secure:true + sameSite:"none" for the
+// browser to send it on cross-site XHR/fetch requests at all — sameSite
+// "lax" only survives top-level navigations, not axios/fetch calls, and
+// secure:false cookies are dropped entirely over HTTPS. Locally (http://
+// localhost) neither of those apply, so dev keeps the permissive defaults.
+const refreshCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+});
+
 const register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
@@ -42,9 +55,7 @@ const register = async (req, res) => {
     await newUser.save();
 
     res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
+      ...refreshCookieOptions(),
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -120,9 +131,7 @@ const login = async (req, res) => {
     await user.save();
 
     res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
+      ...refreshCookieOptions(),
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
     return res.status(200).json({
@@ -161,11 +170,7 @@ const logout = async (req, res) => {
 
     await user.save();
 
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-    });
+    res.clearCookie("refreshToken", refreshCookieOptions());
     return res
       .status(200)
       .json({ success: true, message: "Logout successfull" });
@@ -271,9 +276,7 @@ const googleCallback = async (req, res) => {
     await user.save();
     const isNew = user.isNewUser || false;
     res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
+      ...refreshCookieOptions(),
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
     res.redirect(
@@ -325,6 +328,8 @@ const updateVendorDetails = async (req, res) => {
       panNumber,
       businessAddress,
       city,
+      idProofUrl,
+      businessDocUrl,
     } = req.body;
 
     const fields = [
@@ -381,6 +386,8 @@ const updateVendorDetails = async (req, res) => {
       gstNumber,
       panNumber,
       city,
+      idProofUrl: idProofUrl || user.vendorDetails?.idProofUrl || null,
+      businessDocUrl: businessDocUrl || user.vendorDetails?.businessDocUrl || null,
       submittedAt: new Date(),
     };
     user.vendorStatus = "pending";
@@ -401,6 +408,101 @@ const updateVendorDetails = async (req, res) => {
     });
   }
 };
+// PUT /api/auth/profile — update basic profile fields, any logged-in role
+const updateProfile = async (req, res) => {
+  try {
+    const id = req.user.id;
+    const { name, phone, avatar } = req.body;
+
+    if (name !== undefined && !name.trim()) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Name cannot be empty" });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (name !== undefined) user.name = name.trim();
+    if (phone !== undefined) user.phone = phone || null;
+    if (avatar !== undefined) user.avatar = avatar || null;
+
+    await user.save();
+
+    const userObj = user.toObject();
+    delete userObj.password;
+    delete userObj.refreshToken;
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user: userObj,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal Error Occurred",
+      err: err.message,
+    });
+  }
+};
+
+// PUT /api/auth/change-password — any logged-in role
+const changePassword = async (req, res) => {
+  try {
+    const id = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Current and new password are both required",
+      });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "New password must be at least 6 characters",
+      });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Google-only accounts have no password set yet
+    if (!user.password) {
+      return res.status(400).json({
+        success: false,
+        message: "This account signed up with Google and has no password to change",
+      });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Current password is incorrect" });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    return res
+      .status(200)
+      .json({ success: true, message: "Password changed successfully" });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal Error Occurred",
+      err: err.message,
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -410,4 +512,6 @@ module.exports = {
   googleCallback,
   updateRole,
   updateVendorDetails,
+  updateProfile,
+  changePassword,
 };

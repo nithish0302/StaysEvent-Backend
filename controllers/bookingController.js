@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Booking = require("../models/Booking");
 const Hotel = require("../models/Hotel");
 const Event = require("../models/Event");
+const Review = require("../models/Review");
 
 // ── Helper: calculate nights between two dates ────────────────────────────────
 const nightsBetween = (checkIn, checkOut) => {
@@ -299,9 +300,109 @@ const updateBookingStatus = async (req, res) => {
       return res.status(403).json({ success: false, message: "Unauthorized" });
     }
     booking.status = status;
-    if (status === "completed") booking.paymentStatus = "paid";
+    if (status === "completed") {
+      booking.paymentStatus = "paid";
+      // Fresh completion — let the customer know their stay/event is done
+      // and prompt them to leave a review.
+      booking.customerNotified = false;
+    }
     await booking.save();
     return res.status(200).json({ success: true, booking });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Internal error", err: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/bookings/vendor/new-count  — unseen-booking badge count for vendor
+// ─────────────────────────────────────────────────────────────────────────────
+const getVendorNewBookingsCount = async (req, res) => {
+  const vendorId = req.user.id;
+  try {
+    const count = await Booking.countDocuments({ vendorId, vendorSeen: false });
+    return res.status(200).json({ success: true, count });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Internal error", err: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/bookings/vendor/mark-seen  — vendor opened the bookings page
+// ─────────────────────────────────────────────────────────────────────────────
+const markVendorBookingsSeen = async (req, res) => {
+  const vendorId = req.user.id;
+  try {
+    await Booking.updateMany({ vendorId, vendorSeen: false }, { vendorSeen: true });
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Internal error", err: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/bookings/customer/pending-review — completed bookings the
+// customer hasn't been prompted about yet (and hasn't already reviewed)
+// ─────────────────────────────────────────────────────────────────────────────
+const getPendingReviewBookings = async (req, res) => {
+  const customerId = req.user.id;
+  try {
+    const bookings = await Booking.find({
+      customerId,
+      status: "completed",
+      customerNotified: false,
+    })
+      .sort({ updatedAt: -1 })
+      .limit(10)
+      .populate("hotelId", "name photos")
+      .populate("eventId", "name photos");
+
+    // Filter out anything the customer has already reviewed, and quietly
+    // mark those as notified so they don't keep being fetched.
+    const alreadyReviewedIds = [];
+    const pending = [];
+    for (const b of bookings) {
+      const itemType = b.bookingCategory === "hotel" ? "HOTEL" : "EVENT";
+      const itemId = b.bookingCategory === "hotel" ? b.hotelId?._id : b.eventId?._id;
+      const existing = itemId
+        ? await Review.findOne({ customerId, itemId, itemType })
+        : null;
+      if (existing) {
+        alreadyReviewedIds.push(b._id);
+      } else {
+        pending.push(b);
+      }
+    }
+    if (alreadyReviewedIds.length) {
+      await Booking.updateMany(
+        { _id: { $in: alreadyReviewedIds } },
+        { customerNotified: true },
+      );
+    }
+
+    return res.status(200).json({ success: true, bookings: pending });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Internal error", err: err.message });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/bookings/:id/dismiss-review-prompt — customer closed/acted on it
+// ─────────────────────────────────────────────────────────────────────────────
+const dismissReviewPrompt = async (req, res) => {
+  const customerId = req.user.id;
+  const { id } = req.params;
+  try {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid booking ID" });
+    }
+    const booking = await Booking.findById(id);
+    if (!booking) return res.status(404).json({ success: false, message: "Booking not found" });
+    if (booking.customerId.toString() !== customerId) {
+      return res.status(403).json({ success: false, message: "Unauthorized" });
+    }
+    booking.customerNotified = true;
+    await booking.save();
+    return res.status(200).json({ success: true });
   } catch (err) {
     return res.status(500).json({ success: false, message: "Internal error", err: err.message });
   }
@@ -340,6 +441,46 @@ const getVendorStats = async (req, res) => {
       ]),
     ]);
 
+    // Monthly earnings for the last 6 months (including the current one),
+    // for the vendor dashboard's earnings chart. Confirmed/completed
+    // bookings only, same as the headline revenue figure above.
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+
+    const monthlyRevenueRaw = await Booking.aggregate([
+      {
+        $match: {
+          vendorId: new mongoose.Types.ObjectId(vendorId),
+          status: { $in: ["confirmed", "completed"] },
+          createdAt: { $gte: sixMonthsAgo },
+        },
+      },
+      {
+        $group: {
+          _id: { year: { $year: "$createdAt" }, month: { $month: "$createdAt" } },
+          total: { $sum: "$totalAmount" },
+        },
+      },
+    ]);
+
+    const revenueByKey = new Map(
+      monthlyRevenueRaw.map((r) => [`${r._id.year}-${r._id.month}`, r.total]),
+    );
+
+    const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthlyRevenue = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(sixMonthsAgo);
+      d.setMonth(d.getMonth() + (5 - i));
+      const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+      monthlyRevenue.push({
+        month: monthLabels[d.getMonth()],
+        total: revenueByKey.get(key) || 0,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       stats: {
@@ -353,6 +494,7 @@ const getVendorStats = async (req, res) => {
           cancelled: cancelledBookings,
         },
         revenue: revenue[0]?.total || 0,
+        monthlyRevenue,
       },
     });
   } catch (err) {
@@ -368,4 +510,8 @@ module.exports = {
   getVendorBookings,
   updateBookingStatus,
   getVendorStats,
+  getVendorNewBookingsCount,
+  markVendorBookingsSeen,
+  getPendingReviewBookings,
+  dismissReviewPrompt,
 };

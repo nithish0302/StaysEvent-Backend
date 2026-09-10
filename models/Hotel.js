@@ -117,4 +117,9 @@ const HotelSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+HotelSchema.index({ "location.city": 1 });
+HotelSchema.index({ vendorId: 1 });
+HotelSchema.index({ isActive: 1, isFeatured: 1 });
+HotelSchema.index({ name: "text", description: "text" });
+
 module.exports = mongoose.model("Hotel", HotelSchema);

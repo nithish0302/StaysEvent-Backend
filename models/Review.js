@@ -7,6 +7,10 @@ const ReviewSchema = new Schema({
   itemType: { type: String, enum: ["HOTEL", "EVENT"], required: true },
   rating: { type: Number, required: true, min: 1, max: 5 },
   comment: { type: String, default: "" },
+  vendorReply: {
+    text: { type: String, default: null },
+    repliedAt: { type: Date, default: null },
+  },
 }, { timestamps: true });
 
 // One review per customer per item

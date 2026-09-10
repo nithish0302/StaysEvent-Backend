@@ -70,6 +70,17 @@ const BookingSchema = new mongoose.Schema(
 
     cancelledAt: { type: Date, default: null },
     cancelReason: { type: String, default: null },
+
+    // Has the vendor seen this booking yet? Drives the "new booking" badge.
+    vendorSeen: { type: Boolean, default: false },
+    // Has the customer been shown the "stay complete — leave a review"
+    // prompt for this booking yet? Reset to false whenever a vendor marks
+    // the booking completed.
+    customerNotified: { type: Boolean, default: false },
+
+    // ── Razorpay payment tracking ─────────────────────────────────────────────
+    razorpayOrderId: { type: String, default: null },
+    razorpayPaymentId: { type: String, default: null },
   },
   { timestamps: true }
 );

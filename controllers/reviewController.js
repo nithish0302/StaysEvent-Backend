@@ -1,6 +1,25 @@
 const Review = require("../models/Review");
 const Booking = require("../models/Booking");
+const Hotel = require("../models/Hotel");
+const Event = require("../models/Event");
 const mongoose = require("mongoose");
+
+const itemModelFor = (itemType) => (itemType === "HOTEL" ? Hotel : Event);
+
+// Recompute avgRating/reviewCount for an item and persist onto the
+// Hotel/Event document so listing cards and detail-page headers stay in
+// sync with the live review data (rather than only ReviewSection knowing it).
+const syncItemRatingStats = async (itemId, itemType) => {
+  const agg = await Review.aggregate([
+    { $match: { itemId: new mongoose.Types.ObjectId(itemId), itemType } },
+    { $group: { _id: null, avg: { $avg: "$rating" }, count: { $sum: 1 } } },
+  ]);
+  const avgRating = agg[0]?.avg ? Number(agg[0].avg.toFixed(1)) : 0;
+  const reviewCount = agg[0]?.count || 0;
+
+  const Model = itemType === "HOTEL" ? Hotel : Event;
+  await Model.findByIdAndUpdate(itemId, { avgRating, reviewCount });
+};
 
 // POST /api/reviews  — customer only
 const createReview = async (req, res) => {
@@ -33,6 +52,7 @@ const createReview = async (req, res) => {
 
     const review = await Review.create({ customerId, itemId, itemType, rating, comment });
     await review.populate("customerId", "name avatar");
+    await syncItemRatingStats(itemId, itemType);
     return res.status(201).json({ success: true, review });
   } catch (err) {
     if (err.code === 11000) {
@@ -69,19 +89,71 @@ const getReviews = async (req, res) => {
   }
 };
 
-// DELETE /api/reviews/:id — customer deletes own review
+// DELETE /api/reviews/:id — customer deletes own review, OR admin moderates any review
 const deleteReview = async (req, res) => {
   try {
     const review = await Review.findById(req.params.id);
     if (!review) return res.status(404).json({ success: false, message: "Review not found" });
-    if (review.customerId.toString() !== req.user.id) {
+    const isOwner = review.customerId.toString() === req.user.id;
+    const isAdmin = req.user.role === "admin";
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({ success: false, message: "Unauthorized" });
     }
+    const { itemId, itemType } = review;
     await review.deleteOne();
+    await syncItemRatingStats(itemId, itemType);
     return res.status(200).json({ success: true, message: "Review deleted" });
   } catch (err) {
     return res.status(500).json({ success: false, message: "Internal Error Occurred", err });
   }
 };
 
-module.exports = { createReview, getReviews, deleteReview };
+// PATCH /api/reviews/:id/reply — vendor replies to a review on their own listing
+const replyToReview = async (req, res) => {
+  const vendorId = req.user.id;
+  const { text } = req.body;
+  if (!text || !text.trim()) {
+    return res.status(400).json({ success: false, message: "Reply text is required" });
+  }
+  try {
+    const review = await Review.findById(req.params.id);
+    if (!review) return res.status(404).json({ success: false, message: "Review not found" });
+
+    const Model = itemModelFor(review.itemType);
+    const item = await Model.findById(review.itemId).select("vendorId");
+    if (!item || item.vendorId.toString() !== vendorId) {
+      return res.status(403).json({ success: false, message: "You can only reply to reviews on your own listings" });
+    }
+
+    review.vendorReply = { text: text.trim(), repliedAt: new Date() };
+    await review.save();
+    await review.populate("customerId", "name avatar");
+
+    return res.status(200).json({ success: true, review });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Internal Error Occurred", err });
+  }
+};
+
+// DELETE /api/reviews/:id/reply — vendor removes their own reply
+const deleteReply = async (req, res) => {
+  const vendorId = req.user.id;
+  try {
+    const review = await Review.findById(req.params.id);
+    if (!review) return res.status(404).json({ success: false, message: "Review not found" });
+
+    const Model = itemModelFor(review.itemType);
+    const item = await Model.findById(review.itemId).select("vendorId");
+    if (!item || item.vendorId.toString() !== vendorId) {
+      return res.status(403).json({ success: false, message: "Unauthorized" });
+    }
+
+    review.vendorReply = { text: null, repliedAt: null };
+    await review.save();
+    return res.status(200).json({ success: true, review });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Internal Error Occurred", err });
+  }
+};
+
+module.exports = { createReview, getReviews, deleteReview, replyToReview, deleteReply };

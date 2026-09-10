@@ -11,6 +11,10 @@ const {
   getVendorBookings,
   updateBookingStatus,
   getVendorStats,
+  getVendorNewBookingsCount,
+  markVendorBookingsSeen,
+  getPendingReviewBookings,
+  dismissReviewPrompt,
 } = require("../controllers/bookingController");
 
 // ── Customer routes ────────────────────────────────────────────────────────
@@ -26,11 +30,23 @@ router.get(
   roleMiddleware("customer"),
   getMyBookings
 );
+router.get(
+  "/customer/pending-review",
+  authMiddleware,
+  roleMiddleware("customer"),
+  getPendingReviewBookings
+);
 router.patch(
   "/:id/cancel",
   authMiddleware,
   roleMiddleware("customer"),
   cancelBooking
+);
+router.patch(
+  "/:id/dismiss-review-prompt",
+  authMiddleware,
+  roleMiddleware("customer"),
+  dismissReviewPrompt
 );
 
 // ── Vendor routes ──────────────────────────────────────────────────────────
@@ -39,6 +55,18 @@ router.get(
   authMiddleware,
   roleMiddleware("vendor"),
   getVendorStats
+);
+router.get(
+  "/vendor/new-count",
+  authMiddleware,
+  roleMiddleware("vendor"),
+  getVendorNewBookingsCount
+);
+router.patch(
+  "/vendor/mark-seen",
+  authMiddleware,
+  roleMiddleware("vendor"),
+  markVendorBookingsSeen
 );
 router.get(
   "/vendor/all",
