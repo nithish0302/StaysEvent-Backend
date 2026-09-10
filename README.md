@@ -5,9 +5,12 @@
 ![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?logo=mongodb&logoColor=white)
 ![Jest](https://img.shields.io/badge/Tested_with-Jest-C21325?logo=jest&logoColor=white)
 ![CI](https://img.shields.io/github/actions/workflow/status/nithish0302/StaysEvent-Backend/backend-ci.yml?branch=main&label=CI)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-stayevents.vercel.app-000000?logo=vercel&logoColor=white)](https://stayevents.vercel.app/)
 
 REST API for **StayEvents**, a full-stack hotel & event booking platform. Handles authentication (JWT + Google OAuth), role-based access for customers/vendors/admins, hotel & event listings, bookings, Razorpay payments, reviews, and admin moderation.
 
+**Live demo:** [stayevents.vercel.app](https://stayevents.vercel.app/)
+**Live API:** [staysevent-backend.onrender.com](https://staysevent-backend.onrender.com/)
 **Frontend repo:** [StaysEvent-Frontend](https://github.com/nithish0302/StaysEvent-Frontend)
 
 ## Table of contents
