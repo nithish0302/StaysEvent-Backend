@@ -16,6 +16,21 @@ const {
 const authMiddleware = require("../middleware/authMiddleware");
 const { validate } = require("../middleware/validate");
 const { registerSchema, loginSchema } = require("../utils/authValidateSchema");
+const { googleOAuthConfigured } = require("../config/passport");
+
+// Without GOOGLE_CLIENT_ID/SECRET set, config/passport.js never registers
+// the "google" strategy, and passport.authenticate("google", ...) throws
+// Passport's generic "Unknown authentication strategy" error if hit. This
+// returns a clear, on-topic message instead.
+const requireGoogleOAuth = (req, res, next) => {
+  if (!googleOAuthConfigured) {
+    return res.status(503).json({
+      success: false,
+      message: "Google login is not configured on this server.",
+    });
+  }
+  next();
+};
 
 //POST METHOD
 router.post("/register", validate(registerSchema), register);
@@ -30,10 +45,12 @@ router.post("/logout", authMiddleware, logout);
 router.get("/me", authMiddleware, getMe);
 router.get(
   "/google",
+  requireGoogleOAuth,
   passport.authenticate("google", { scope: ["profile", "email"] }),
 );
 router.get(
   "/google/callback",
+  requireGoogleOAuth,
   passport.authenticate("google", {
     session: false,
     failureRedirect: "/login",
