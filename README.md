@@ -10,7 +10,6 @@
 REST API for **StayEvents**, a full-stack hotel & event booking platform. Handles authentication (JWT + Google OAuth), role-based access for customers/vendors/admins, hotel & event listings, bookings, Razorpay payments, reviews, and admin moderation.
 
 **Live demo:** [stayevents.vercel.app](https://stayevents.vercel.app/)
-**Live API:** [staysevent-backend.onrender.com](https://staysevent-backend.onrender.com/)
 **Frontend repo:** [StaysEvent-Frontend](https://github.com/nithish0302/StaysEvent-Frontend)
 
 ## Table of contents
